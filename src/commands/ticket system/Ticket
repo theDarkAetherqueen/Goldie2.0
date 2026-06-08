@@ -1,190 +1,183 @@
-<!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-950 text-gray-100">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Support Ticket System</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
-    <style>
-        body { font-family: system-ui, -apple-system, sans-serif; }
-        .ticket-card { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-        .ticket-card:hover { transform: translateY(-2px); box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); }
-        .modal { animation: modalPop 0.3s ease forwards; }
-        @keyframes modalPop {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
+const {
+    EmbedBuilder,
+    ActionRowBuilder,
+    StringSelectMenuBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelType,
+    PermissionsBitField
+} = require('discord.js');
+
+module.exports = (client) => {
+
+    // ====================== TICKET COMMAND ======================
+    client.on('interactionCreate', async interaction => {
+        if (!interaction.isChatInputCommand()) return;
+
+        if (interaction.commandName === 'ticket') {
+            const embed = new EmbedBuilder()
+                .setTitle('🎟️ Support Ticket System')
+                .setDescription('Click the button below to create a new ticket.')
+                .setColor(0x5865F2);
+
+            const button = new ButtonBuilder()
+                .setCustomId('create_ticket_btn')
+                .setLabel('Create Ticket')
+                .setEmoji('📩')
+                .setStyle(ButtonStyle.Primary);
+
+            const row = new ActionRowBuilder().addComponents(button);
+
+            await interaction.reply({ embeds: [embed], components: [row] });
         }
-    </style>
-</head>
-<body class="h-full">
-    <div class="flex h-screen">
-        <!-- Sidebar -->
-        <div class="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
-            <div class="p-6 border-b border-gray-800">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">T</div>
-                    <div>
-                        <h1 class="text-2xl font-bold tracking-tight">Support</h1>
-                        <p class="text-xs text-gray-500">Ticket System</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="p-4">
-                <button onclick="showNewTicket()" 
-                        class="w-full bg-blue-600 hover:bg-blue-700 transition-colors text-white font-semibold py-3 px-4 rounded-2xl flex items-center justify-center gap-2">
-                    <i class="fas fa-plus"></i>
-                    <span>New Ticket</span>
-                </button>
-            </div>
-            
-            <nav class="flex-1 px-3 py-2">
-                <a href="#" onclick="navigate('dashboard')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-2Interruptedthis is for discord bot✅ Here's a complete, clean Discord.js Ticket System with Dropdowns for Categories & Priority.
-Features:
+    });
 
-Slash command /ticket to open the ticket panel
-Beautiful button to create ticket
-Dropdown menu for Categories
-Dropdown menu for Priority (Low, Medium, High, Urgent)
-Automatic private ticket channels
-Proper permissions (only user + staff can see)
-Ticket logs
-Close ticket button
+    // ====================== BUTTON HANDLER ======================
+    client.on('interactionCreate', async interaction => {
+        if (interaction.isButton() && interaction.customId === 'create_ticket_btn') {
+            await showCategoryDropdown(interaction);
+        }
 
+        if (interaction.isButton() && interaction.customId.startsWith('close_ticket_')) {
+            await closeTicket(interaction);
+        }
+    });
 
-1. index.js (Main File)
-JavaScriptconst { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, ChannelType } = require('discord.js');
-const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
-});
+    // ====================== DROPDOWN HANDLERS ======================
+    client.on('interactionCreate', async interaction => {
+        if (!interaction.isStringSelectMenu()) return;
 
-const TICKET_CATEGORY_ID = "YOUR_TICKET_CATEGORY_ID_HERE"; // ← Put your ticket category ID
-const STAFF_ROLE_ID = "YOUR_STAFF_ROLE_ID_HERE";           // ← Staff role that can see tickets
-
-client.once('ready', () => {
-    console.log(`✅ ${client.user.tag} is online!`);
-});
-
-// Create Ticket Panel Command
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isCommand()) return;
-
-    if (interaction.commandName === 'ticket') {
-        const embed = new EmbedBuilder()
-            .setTitle('🎟️ Support Ticket System')
-            .setDescription('Click the button below to create a new ticket.')
-            .setColor(0x00ff00);
-
-        const button = new ButtonBuilder()
-            .setCustomId('create_ticket')
-            .setLabel('Create Ticket')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('📩');
-
-        const row = new ActionRowBuilder().addComponents(button);
-
-        await interaction.reply({ embeds: [embed], components: [row] });
-    }
-});
-
-// Handle Button & Select Menus
-client.on('interactionCreate', async interaction => {
-    if (interaction.isButton() && interaction.customId === 'create_ticket') {
-        await showTicketModal(interaction);
-    }
-
-    if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'ticket_category') {
-            await handleTicketCreation(interaction);
+            client.ticketData = client.ticketData || new Map();
+            client.ticketData.set(interaction.user.id, {
+                category: interaction.values[0]
+            });
+
+            await showPriorityDropdown(interaction);
+        }
+
+        if (interaction.customId === 'ticket_priority') {
+            await createTicket(interaction);
+        }
+    });
+
+    // ====================== FUNCTIONS ======================
+    async function showCategoryDropdown(interaction) {
+        const categoryMenu = new StringSelectMenuBuilder()
+            .setCustomId('ticket_category')
+            .setPlaceholder('Select Support Category')
+            .addOptions([
+                { label: 'General Support', value: 'general', emoji: '❓' },
+                { label: 'Technical Issue', value: 'technical', emoji: '🔧' },
+                { label: 'Billing & Payments', value: 'billing', emoji: '💰' },
+                { label: 'Account Issue', value: 'account', emoji: '👤' },
+                { label: 'Bug Report', value: 'bug', emoji: '🐛' },
+                { label: 'Feature Request', value: 'feature', emoji: '💡' },
+                { label: 'Complaint', value: 'complaint', emoji: '⚠️' },
+                { label: 'Other', value: 'other', emoji: '📌' }
+            ]);
+
+        const row = new ActionRowBuilder().addComponents(categoryMenu);
+
+        await interaction.reply({
+            content: '**Please select a category for your ticket:**',
+            components: [row],
+            ephemeral: true
+        });
+    }
+
+    async function showPriorityDropdown(interaction) {
+        const priorityMenu = new StringSelectMenuBuilder()
+            .setCustomId('ticket_priority')
+            .setPlaceholder('Select Priority Level')
+            .addOptions([
+                { label: 'Low', value: 'low', emoji: '🟢' },
+                { label: 'Medium', value: 'medium', emoji: '🟡' },
+                { label: 'High', value: 'high', emoji: '🟠' },
+                { label: 'Urgent', value: 'urgent', emoji: '🔴' }
+            ]);
+
+        const row = new ActionRowBuilder().addComponents(priorityMenu);
+
+        await interaction.update({
+            content: '**Category selected! Now select priority:**',
+            components: [row],
+            ephemeral: true
+        });
+    }
+
+    async function createTicket(interaction) {
+        const userData = client.ticketData?.get(interaction.user.id);
+        if (!userData) {
+            return interaction.update({ content: '❌ Session expired. Please try again.', components: [] });
+        }
+
+        const category = userData.category;
+        const priority = interaction.values[0];
+
+        try {
+            const ticketChannel = await interaction.guild.channels.create({
+                name: `ticket-${interaction.user.username}`,
+                type: ChannelType.GuildText,
+                permissionOverwrites: [
+                    {
+                        id: interaction.guild.id,
+                        deny: [PermissionsBitField.Flags.ViewChannel]
+                    },
+                    {
+                        id: interaction.user.id,
+                        allow: [
+                            PermissionsBitField.Flags.ViewChannel,
+                            PermissionsBitField.Flags.SendMessages,
+                            PermissionsBitField.Flags.ReadMessageHistory
+                        ]
+                    }
+                ]
+            });
+
+            const color = priority === 'urgent' ? 0xFF0000 :
+                         priority === 'high' ? 0xFF8800 :
+                         priority === 'medium' ? 0xFFCC00 : 0x00FF00;
+
+            const embed = new EmbedBuilder()
+                .setTitle('🎟️ New Support Ticket')
+                .setColor(color)
+                .addFields(
+                    { name: 'User', value: `${interaction.user}`, inline: true },
+                    { name: 'Category', value: category.toUpperCase(), inline: true },
+                    { name: 'Priority', value: priority.toUpperCase(), inline: true }
+                )
+                .setTimestamp();
+
+            const closeBtn = new ButtonBuilder()
+                .setCustomId(`close_ticket_${ticketChannel.id}`)
+                .setLabel('Close Ticket')
+                .setEmoji('🔒')
+                .setStyle(ButtonStyle.Danger);
+
+            const row = new ActionRowBuilder().addComponents(closeBtn);
+
+            await ticketChannel.send({
+                content: `${interaction.user}`,
+                embeds: [embed],
+                components: [row]
+            });
+
+            await interaction.update({
+                content: `✅ **Your ticket has been created!**\n→ ${ticketChannel}`,
+                components: []
+            });
+
+            client.ticketData.delete(interaction.user.id);
+
+        } catch (err) {
+            console.error(err);
+            await interaction.update({ content: '❌ Failed to create ticket.', components: [] });
         }
     }
 
-    if (interaction.isButton() && interaction.customId.startsWith('close_ticket_')) {
-        await closeTicket(interaction);
+    async function closeTicket(interaction) {
+        await interaction.reply({ content: '🔒 Closing ticket in 3 seconds...', ephemeral: true });
+        setTimeout(() => interaction.channel.delete().catch(() => {}), 3000);
     }
-});
-
-async function showTicketModal(interaction) {
-    const categoryMenu = new StringSelectMenuBuilder()
-        .setCustomId('ticket_category')
-        .setPlaceholder('Select Support Category')
-        .addOptions([
-            { label: 'General Support', value: 'general', emoji: '❓' },
-            { label: 'Technical Issue', value: 'technical', emoji: '🔧' },
-            { label: 'Billing / Payment', value: 'billing', emoji: '💰' },
-            { label: 'Account Issue', value: 'account', emoji: '👤' },
-            { label: 'Report a Bug', value: 'bug', emoji: '🐛' },
-            { label: 'Feature Request', value: 'feature', emoji: '💡' },
-            { label: 'Other', value: 'other', emoji: '📌' },
-        ]);
-
-    const priorityMenu = new StringSelectMenuBuilder()
-        .setCustomId('ticket_priority')
-        .setPlaceholder('Select Priority')
-        .addOptions([
-            { label: 'Low', value: 'low', emoji: '🟢' },
-            { label: 'Medium', value: 'medium', emoji: '🟡' },
-            { label: 'High', value: 'high', emoji: '🟠' },
-            { label: 'Urgent', value: 'urgent', emoji: '🔴' },
-        ]);
-
-    const row1 = new ActionRowBuilder().addComponents(categoryMenu);
-    const row2 = new ActionRowBuilder().addComponents(priorityMenu);
-
-    await interaction.showModal({
-        customId: 'ticket_modal',
-        title: 'Create New Ticket',
-        components: [row1, row2] // Note: For select menus in modals, we use a follow-up in real bots, but for simplicity we'll handle in one step
-    });
-}
-
-// Better approach: Use one select first, then create (we'll simplify here)
-async function handleTicketCreation(interaction) {
-    const category = interaction.values[0];
-    // For full version, you'd collect priority too. This version uses category only for channel name.
-
-    const priority = "medium"; // Can be expanded
-
-    const ticketChannel = await interaction.guild.channels.create({
-        name: `ticket-${interaction.user.username}`,
-        type: ChannelType.GuildText,
-        parent: TICKET_CATEGORY_ID,
-        permissionOverwrites: [
-            {
-                id: interaction.guild.id,
-                deny: [PermissionsBitField.Flags.ViewChannel]
-            },
-            {
-                id: interaction.user.id,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
-            },
-            {
-                id: STAFF_ROLE_ID,
-                allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages]
-            }
-        ]
-    });
-
-    const embed = new EmbedBuilder()
-        .setTitle('🎟️ New Support Ticket')
-        .setDescription(`**User:** ${interaction.user}\n**Category:** ${category.toUpperCase()}\n**Priority:** ${priority.toUpperCase()}`)
-        .setColor(0x00ff00)
-        .setTimestamp();
-
-    const closeButton = new ButtonBuilder()
-        .setCustomId(`close_ticket_${ticketChannel.id}`)
-        .setLabel('Close Ticket')
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji('🔒');
-
-    const row = new ActionRowBuilder().addComponents(closeButton);
-
-    await ticketChannel.send({ content: `${interaction.user} <@&${STAFF_ROLE_ID}>`, embeds: [embed], components: [row] });
-
-    await interaction.reply({ content: `✅ Ticket created! Go to ${ticketChannel}`, ephemeral: true });
-}
-
-async function closeTicket(interaction) {
-    await interaction.channel.delete();
-}
+};
